@@ -3,142 +3,192 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Binary Image Converter</title>
+    <title>Pick a Location on OpenStreetMap</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <style>
+      #map {
+        height: 70vh;
+        width: 100%;
+      }
       body {
         font-family: Arial, sans-serif;
-        max-width: 1200px;
-        margin: 0 auto;
-        padding: 20px;
-        background-color: #f5f5f5;
+        margin: 0;
+        padding: 0;
+        background: #f5f5f5;
       }
       .container {
-        background-color: white;
-        padding: 20px;
+        max-width: 800px;
+        margin: 30px auto;
+        background: #fff;
         border-radius: 8px;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        padding: 24px;
       }
-      h1 {
-        color: #333;
-        text-align: center;
-        margin-bottom: 30px;
+      #status {
+        margin-top: 16px;
+        font-weight: bold;
       }
-      .upload-section {
-        text-align: center;
-        margin-bottom: 30px;
+      #map-link {
+        display: block;
+        margin-top: 12px;
+        font-size: 1.1em;
       }
-      .image-container {
+      .form-row {
         display: flex;
-        justify-content: space-around;
-        flex-wrap: wrap;
-        gap: 20px;
+        gap: 10px;
+        margin-bottom: 12px;
+        align-items: center;
       }
-      .image-box {
+      .form-row input[type="text"] {
         flex: 1;
-        min-width: 300px;
-        text-align: center;
+        padding: 8px;
+        font-size: 1em;
       }
-      .image-box img {
-        max-width: 100%;
-        max-height: 400px;
-        border-radius: 4px;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      .form-row select,
+      .form-row button {
+        padding: 8px;
+        font-size: 1em;
       }
-      .image-box h3 {
-        color: #666;
-        margin: 10px 0;
-      }
-      #uploadButton {
+      #search-parking-btn {
+        margin-top: 12px;
+        padding: 10px;
+        font-size: 1em;
         background-color: #4caf50;
         color: white;
-        padding: 10px 20px;
         border: none;
         border-radius: 4px;
         cursor: pointer;
-        font-size: 16px;
-        transition: background-color 0.3s;
       }
-      #uploadButton:hover {
-        background-color: #45a049;
-      }
-      #fileInput {
-        display: none;
-      }
-      .loading {
-        display: none;
-        text-align: center;
-        margin: 20px 0;
+      #search-parking-btn:disabled {
+        background-color: #cccccc;
+        cursor: not-allowed;
       }
     </style>
   </head>
   <body>
     <div class="container">
-      <h1>Binary Image Converter</h1>
-
-      <div class="upload-section">
-        <input type="file" id="fileInput" accept="image/*" />
-        <button id="uploadButton">Choose an Image</button>
-      </div>
-
-      <div class="loading" id="loading">Converting image...</div>
-
-      <div class="image-container">
-        <div class="image-box">
-          <h3>Original Image</h3>
-          <img
-            id="originalImage"
-            src=""
-            alt="Original image will appear here"
+      <form id="search-form">
+        <div class="form-row">
+          <input
+            type="text"
+            id="address-input"
+            placeholder="Enter address or region name..."
           />
+          <button type="submit">Go</button>
         </div>
-        <div class="image-box">
-          <h3>Binary Image</h3>
-          <img id="binaryImage" src="" alt="Binary image will appear here" />
+        <div class="form-row">
+          <label for="range-select">Search range:</label>
+          <select id="range-select">
+            <option value="0.005">500m</option>
+            <option value="0.01" selected>1km</option>
+            <option value="0.02">2km</option>
+          </select>
         </div>
-      </div>
+      </form>
+      <div id="map"></div>
+      <button id="search-parking-btn" disabled>Search Parking Spots</button>
+      <div id="status"></div>
+      <a id="map-link" href="#" target="_blank" style="display: none"
+        >View Generated Parking Map</a
+      >
     </div>
-
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <script>
-      document.getElementById("uploadButton").addEventListener("click", () => {
-        document.getElementById("fileInput").click();
+      let map = L.map("map").setView([41.0082, 28.9784], 12); // Istanbul center
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: "© OpenStreetMap contributors",
+      }).addTo(map);
+      let marker = null;
+      let searchDelta = parseFloat(
+        document.getElementById("range-select").value
+      );
+      let currentLatLng = null;
+
+      document
+        .getElementById("range-select")
+        .addEventListener("change", function () {
+          searchDelta = parseFloat(this.value);
+        });
+
+      document
+        .getElementById("search-form")
+        .addEventListener("submit", function (e) {
+          e.preventDefault();
+          const address = document.getElementById("address-input").value.trim();
+          if (!address) return;
+          document.getElementById("status").textContent = "Searching...";
+          fetch(
+            `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
+              address
+            )}`
+          )
+            .then((response) => response.json())
+            .then((results) => {
+              if (results && results.length > 0) {
+                const lat = parseFloat(results[0].lat);
+                const lon = parseFloat(results[0].lon);
+                map.setView([lat, lon], 15);
+                document.getElementById(
+                  "status"
+                ).textContent = `Found: ${results[0].display_name}`;
+              } else {
+                document.getElementById("status").textContent =
+                  "Address not found.";
+              }
+            })
+            .catch(() => {
+              document.getElementById("status").textContent =
+                "Error searching for address.";
+            });
+        });
+
+      map.on("click", function (e) {
+        if (marker) {
+          map.removeLayer(marker);
+        }
+        marker = L.marker(e.latlng).addTo(map);
+        currentLatLng = e.latlng;
+        document.getElementById("search-parking-btn").disabled = false;
       });
 
       document
-        .getElementById("fileInput")
-        .addEventListener("change", async (e) => {
-          const file = e.target.files[0];
-          if (!file) return;
-
-          // Show original image
-          const originalImage = document.getElementById("originalImage");
-          originalImage.src = URL.createObjectURL(file);
-
-          // Show loading
-          document.getElementById("loading").style.display = "block";
-
-          // Create form data
-          const formData = new FormData();
-          formData.append("image", file);
-
-          try {
-            const response = await fetch("/convert", {
-              method: "POST",
-              body: formData,
-            });
-
-            if (response.ok) {
-              const blob = await response.blob();
-              const binaryImage = document.getElementById("binaryImage");
-              binaryImage.src = URL.createObjectURL(blob);
-            } else {
-              alert("Error converting image");
-            }
-          } catch (error) {
-            alert("Error: " + error.message);
-          } finally {
-            document.getElementById("loading").style.display = "none";
+        .getElementById("search-parking-btn")
+        .addEventListener("click", function () {
+          if (!currentLatLng) {
+            document.getElementById("status").textContent =
+              "Please click on the map to set a location first.";
+            return;
           }
+          sendCoordinates(currentLatLng.lat, currentLatLng.lng, searchDelta);
         });
+
+      function sendCoordinates(lat, lng, delta) {
+        fetch("/submit-coordinates", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ lat: lat, lng: lng, delta: delta }),
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            document.getElementById(
+              "status"
+            ).textContent = `Coordinates sent! (lat: ${data.lat}, lng: ${data.lng})`;
+            if (data.map_url) {
+              const link = document.getElementById("map-link");
+              link.href = data.map_url;
+              link.style.display = "block";
+              link.textContent = "View Generated Parking Map";
+            }
+          })
+          .catch((err) => {
+            document.getElementById("status").textContent =
+              "Error sending coordinates.";
+            document.getElementById("map-link").style.display = "none";
+          });
+      }
     </script>
   </body>
 </html>

@@ -6,17 +6,8 @@ from shapely.geometry import LineString
 from typing import List, Tuple, Dict, Optional
 from dataclasses import dataclass, asdict
 import branca.colormap as cm
-
-# Optional: Only import if region_name is used
-try:
-    import osmnx as ox
-except ImportError:
-    ox = None
-
-try:
-    import overpy
-except ImportError:
-    overpy = None
+import overpy
+from datetime import datetime
 
 @dataclass
 class StreetParking:
@@ -28,62 +19,48 @@ class StreetParking:
 
 class ParkingMapViewer:
     def __init__(self, region_name: Optional[str] = None, bounds: Optional[Dict[str, float]] = None):
-        if not overpy:
-            raise ImportError("overpy is required. Please install it with 'pip install overpy'.")
         self.osm_api = overpy.Overpass()
-        self.region_name = region_name
         self.bounds = bounds
-        if region_name:
-            if not ox:
-                raise ImportError("osmnx is required for region name lookup. Please install it with 'pip install osmnx'.")
-            self.bounds = self.get_bounds_from_region(region_name)
-        if not self.bounds:
-            raise ValueError("Either region_name or bounds must be provided.")
         self.streets: List[StreetParking] = []
         self.map = None
 
-    def get_bounds_from_region(self, region_name: str) -> Dict[str, float]:
-        gdf = ox.geocode_to_gdf(region_name)
-        if gdf.empty:
-            raise ValueError(f"Could not find administrative boundary for: {region_name}")
-        min_lon, min_lat, max_lon, max_lat = gdf.unary_union.bounds
-        return {
-            'min_lat': min_lat,
-            'max_lat': max_lat,
-            'min_lon': min_lon,
-            'max_lon': max_lon
-        }
-
     def collect_streets(self):
-        b = self.bounds
-        query = f"""
-            [out:json];
-            (
-                way[\"highway\"]
-                    ({b['min_lat']},{b['min_lon']},{b['max_lat']},{b['max_lon']});
-            );
-            out body;
-            >;
-            out skel qt;
-        """
+        """Collect street data from OpenStreetMap."""
+        if not self.bounds:
+            raise ValueError("Bounds must be set before collecting streets")
+
         try:
+            query = f"""
+                [out:json];
+                (
+                    way["highway"]
+                        ({self.bounds['min_lat']},{self.bounds['min_lon']},
+                         {self.bounds['max_lat']},{self.bounds['max_lon']});
+                );
+                out body;
+                >;
+                out skel qt;
+            """
+
             result = self.osm_api.query(query)
-            streets = []
+            self.streets = []
+
             for way in result.ways:
                 if 'highway' in way.tags:
                     street = self.process_street(way)
                     if street:
-                        streets.append(street)
-            self.streets = streets
-            return streets
+                        self.streets.append(street)
+
         except Exception as e:
-            print(f"Error collecting streets: {e}")
-            return []
+            raise Exception(f"Error collecting streets: {str(e)}")
 
     def process_street(self, way) -> Optional[StreetParking]:
+        """Process each street."""
         try:
             name = way.tags.get('name', 'Unknown Street')
             coords = [(float(node.lat), float(node.lon)) for node in way.nodes]
+
+            # Basic parking data
             parking_data = {
                 'street_type': way.tags.get('highway', 'unknown'),
                 'parking_side': way.tags.get('parking:side', 'both'),
@@ -94,11 +71,15 @@ class ParkingMapViewer:
                     'maxstay': way.tags.get('parking:maxstay', None)
                 }
             }
+
+            # Calculate parking capacity
             street_line = LineString([(lon, lat) for lat, lon in coords])
-            length_meters = street_line.length * 111000
-            spots = int(length_meters / 6)
+            length_meters = street_line.length * 111000  # Convert to meters
+            spots = int(length_meters / 6)  # Assume 6 meters per car
+
             if parking_data['parking_side'] == 'both':
                 spots *= 2
+
             return StreetParking(
                 name=name,
                 coordinates=coords,
@@ -106,6 +87,7 @@ class ParkingMapViewer:
                 parking_data=parking_data,
                 estimated_capacity=spots
             )
+
         except Exception as e:
             print(f"Error processing street: {e}")
             return None
@@ -121,8 +103,10 @@ class ParkingMapViewer:
         folium.TileLayer('CartoDB positron').add_to(m)
         folium.LayerControl().add_to(m)
         Fullscreen().add_to(m)
+        
         color_palette = ['red', 'yellow', 'green']
         colormap = cm.LinearColormap(colors=color_palette, vmin=0, vmax=1)
+        
         for street in self.streets:
             if not street.coordinates:
                 continue
@@ -154,6 +138,24 @@ class ParkingMapViewer:
             raise RuntimeError("Map has not been created yet. Call create_map() first.")
         self.map.save(output_path)
         print(f"Map saved to {output_path}")
+
+    def create_map_from_coordinates(self, lat: float, lng: float, delta: float, output_path: str):
+        """Create and save a map from coordinates and delta."""
+        # Calculate bounds
+        bounds = {
+            'min_lat': lat - delta,
+            'max_lat': lat + delta,
+            'min_lon': lng - delta,
+            'max_lon': lng + delta
+        }
+        
+        # Initialize with bounds
+        self.bounds = bounds
+        
+        # Generate the map
+        self.collect_streets()
+        self.create_map()
+        self.save_html(output_path)
 
 if __name__ == "__main__":
     # Example usage with region name
