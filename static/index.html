@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Binary Image Converter</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px;
+        background-color: #f5f5f5;
+      }
+      .container {
+        background-color: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+      h1 {
+        color: #333;
+        text-align: center;
+        margin-bottom: 30px;
+      }
+      .upload-section {
+        text-align: center;
+        margin-bottom: 30px;
+      }
+      .image-container {
+        display: flex;
+        justify-content: space-around;
+        flex-wrap: wrap;
+        gap: 20px;
+      }
+      .image-box {
+        flex: 1;
+        min-width: 300px;
+        text-align: center;
+      }
+      .image-box img {
+        max-width: 100%;
+        max-height: 400px;
+        border-radius: 4px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+      .image-box h3 {
+        color: #666;
+        margin: 10px 0;
+      }
+      #uploadButton {
+        background-color: #4caf50;
+        color: white;
+        padding: 10px 20px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 16px;
+        transition: background-color 0.3s;
+      }
+      #uploadButton:hover {
+        background-color: #45a049;
+      }
+      #fileInput {
+        display: none;
+      }
+      .loading {
+        display: none;
+        text-align: center;
+        margin: 20px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Binary Image Converter</h1>
+
+      <div class="upload-section">
+        <input type="file" id="fileInput" accept="image/*" />
+        <button id="uploadButton">Choose an Image</button>
+      </div>
+
+      <div class="loading" id="loading">Converting image...</div>
+
+      <div class="image-container">
+        <div class="image-box">
+          <h3>Original Image</h3>
+          <img
+            id="originalImage"
+            src=""
+            alt="Original image will appear here"
+          />
+        </div>
+        <div class="image-box">
+          <h3>Binary Image</h3>
+          <img id="binaryImage" src="" alt="Binary image will appear here" />
+        </div>
+      </div>
+    </div>
+
+    <script>
+      document.getElementById("uploadButton").addEventListener("click", () => {
+        document.getElementById("fileInput").click();
+      });
+
+      document
+        .getElementById("fileInput")
+        .addEventListener("change", async (e) => {
+          const file = e.target.files[0];
+          if (!file) return;
+
+          // Show original image
+          const originalImage = document.getElementById("originalImage");
+          originalImage.src = URL.createObjectURL(file);
+
+          // Show loading
+          document.getElementById("loading").style.display = "block";
+
+          // Create form data
+          const formData = new FormData();
+          formData.append("image", file);
+
+          try {
+            const response = await fetch("/convert", {
+              method: "POST",
+              body: formData,
+            });
+
+            if (response.ok) {
+              const blob = await response.blob();
+              const binaryImage = document.getElementById("binaryImage");
+              binaryImage.src = URL.createObjectURL(blob);
+            } else {
+              alert("Error converting image");
+            }
+          } catch (error) {
+            alert("Error: " + error.message);
+          } finally {
+            document.getElementById("loading").style.display = "none";
+          }
+        });
+    </script>
+  </body>
+</html>
