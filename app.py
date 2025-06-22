@@ -3,7 +3,7 @@ import logging
 import os
 from ParkingMapViewer import ParkingMapViewer
 
-app = Flask(__name__, static_folder='static', template_folder='templates')
+app = Flask(__name__)
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -69,4 +69,4 @@ if __name__ == "__main__":
     # Ensure the previous_maps directory exists
     os.makedirs('previous_maps', exist_ok=True)
     port = int(os.environ.get('PORT', 5001))
-    app.run(host='0.0.0.0', port=port, debug=True) 
+    app.run(host='0.0.0.0', port=port, debug=False) 
